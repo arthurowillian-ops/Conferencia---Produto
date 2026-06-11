@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SGC v12.6 - Oficial</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #00B7CC; --dark: #1a1c1e; --bg: #f4f7f6; --white: #ffffff; --green: #92D050; --blue: #9BC2E6; }
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; background: var(--bg); color: #333; overflow-x: hidden; }
+        
+        .screen { display: none; min-height: 100vh; padding: 15px; flex-direction: column; align-items: center; }
+        .screen.active { display: flex; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        #sync-status {
+            position: sticky; top: 0; z-index: 1001; width: 100%;
+            text-align: center; padding: 8px; font-weight: 700; font-size: 12px;
+            transition: 0.3s; margin-bottom: 10px; border-radius: 8px;
+        }
+        .status-sync { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status-saving { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+
+        .card-auth { background: var(--white); padding: 30px; border-radius: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; width: 100%; max-width: 400px; margin-top: 15vh; border: 1px solid #eee; }
+        .logo-login { height: 80px; margin-bottom: 20px; }
+        
+        .grid-selection { display: grid; grid-template-columns: 1fr; gap: 15px; width: 100%; max-width: 700px; margin-top: 20px; }
+        @media (min-width: 600px) { .grid-selection { grid-template-columns: 1fr 1fr; } }
+
+        .card-type { background: var(--white); padding: 30px 20px; border-radius: 20px; text-align: center; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 2px solid transparent; }
+        .card-type:active { transform: scale(0.98); background: #fafafa; }
+
+        .container { width: 100%; max-width: 1100px; }
+        .header-app { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 15px; background: var(--white); padding: 12px 20px; border-radius: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
+        
+        .table-card { background: white; border-radius: 16px; overflow-x: auto; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th { background: #f8f9fa; padding: 12px; text-align: left; font-size: 11px; color: #888; text-transform: uppercase; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f1f1f1; font-size: 13px; }
+
+        .status-cell { font-size: 11px; color: #666; line-height: 1.2; }
+        .pct-badge { background: #e0f7fa; color: #00838f; padding: 2px 6px; border-radius: 4px; font-weight: 700; margin-right: 5px; }
+
+        /* Estilo da Bolinha de Status */
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .dot-red { background-color: #ff4d4d; }
+        .dot-yellow { background-color: #ffcc00; }
+        .dot-green { background-color: #28a745; }
+
+        .check-container { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+        .check-row { 
+            display: grid; grid-template-columns: 1fr 120px 50px; 
+            background: white; border-radius: 12px; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04); border: 1px solid #efefef;
+        }
+        .c-posto { grid-column: 1 / span 3; padding: 8px 15px; font-weight: 700; font-size: 10px; background: #fafafa; border-left: 8px solid var(--green); text-transform: uppercase; }
+        .lp-style { border-left-color: var(--blue); background: #f4faff; }
+        .c-ativid { padding: 12px 15px; font-size: 13px; font-weight: 500; display: flex; align-items: center; }
+        
+        .action-bar {
+            position: fixed; bottom: 0; left: 0; right: 0; background: white; 
+            padding: 15px; box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+            z-index: 1000; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 10px;
+        }
+
+        @media (min-width: 1024px) {
+            .check-row { grid-template-columns: 260px 1fr 180px 80px; }
+            .c-posto { grid-column: auto; padding: 20px; }
+            .action-bar { display: grid; grid-template-columns: 1fr 420px; padding: 25px 40px; }
+        }
+
+        button { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+        input[type="checkbox"] { width: 32px; height: 32px; accent-color: var(--primary); }
+        input[type="date"] { padding: 8px; border: 1px solid #ddd; border-radius: 8px; width: 100%; }
+        textarea { width: 100%; height: 70px; border-radius: 10px; border: 1px solid #ddd; padding: 10px; resize: none; }
+
+        /* MODAL DE PESQUISA */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55); z-index: 2000;
+            align-items: flex-start; justify-content: center;
+            padding: 20px; overflow-y: auto;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: #fff; border-radius: 20px; width: 100%; max-width: 720px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden;
+            margin: auto;
+        }
+        .modal-header {
+            background: var(--dark); color: #fff;
+            padding: 18px 20px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-header h3 { margin: 0; font-size: 15px; }
+        .modal-close {
+            background: none; color: #fff; border: none;
+            font-size: 22px; cursor: pointer; line-height: 1; padding: 4px 8px;
+        }
+        .modal-body { padding: 20px; }
+        .search-input-wrap { position: relative; margin-bottom: 6px; }
+        .search-input-wrap input {
+            width: 100%; padding: 12px 16px 12px 42px;
+            border: 2px solid #ddd; border-radius: 12px;
+            font-size: 14px; outline: none; transition: border 0.2s;
+        }
+        .search-input-wrap input:focus { border-color: var(--primary); }
+        .search-input-wrap .ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 17px; }
+        .search-hint { font-size: 11px; color: #aaa; margin-bottom: 16px; }
+        .search-suggestions {
+            background: #fff; border: 1px solid #eee; border-radius: 10px;
+            max-height: 200px; overflow-y: auto; margin-bottom: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .suggestion-item {
+            padding: 10px 14px; cursor: pointer; font-size: 13px;
+            border-bottom: 1px solid #f5f5f5; transition: background 0.15s;
+        }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover { background: #f0fbfc; }
+        .suggestion-item mark { background: #c8f0f5; border-radius: 3px; padding: 0 2px; }
+        .search-results-title {
+            font-size: 12px; font-weight: 700; color: #555;
+            text-transform: uppercase; margin: 16px 0 10px; letter-spacing: 0.5px;
+        }
+        .search-results-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+        .search-result-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 14px; border-radius: 12px;
+            border: 1px solid #eee; font-size: 13px;
+            transition: background 0.15s; cursor: default;
+        }
+        .search-result-item:hover { background: #fafafa; }
+        .result-dot {
+            width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+        }
+        .result-dot.green { background: #28a745; box-shadow: 0 0 0 3px rgba(40,167,69,0.18); }
+        .result-dot.red   { background: #ff4d4d; box-shadow: 0 0 0 3px rgba(255,77,77,0.18); }
+        .result-info { flex: 1; }
+        .result-express { font-weight: 700; color: #222; }
+        .result-op { font-size: 11px; color: #888; }
+        .result-type-badge {
+            font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+            text-transform: uppercase;
+        }
+        .badge-modulo { background: #e8f5e9; color: #2e7d32; }
+        .badge-pod    { background: #e3f2fd; color: #1565c0; }
+        .search-empty { text-align: center; color: #aaa; padding: 30px 0; font-size: 14px; }
+        .search-loading { text-align: center; color: #aaa; padding: 20px 0; font-size: 13px; }
+        .search-stats {
+            font-size: 12px; color: #888; margin-bottom: 10px;
+            display: flex; gap: 16px; align-items: center;
+        }
+        .stat-green { color: #28a745; font-weight: 700; }
+        .stat-red   { color: #ff4d4d; font-weight: 700; }
+    </style>
+</head>
+<body>
+
+    <div id="scr-login" class="screen active">
+        <div class="card-auth">
+            <img src="https://i.postimg.cc/sfJg4Ykr/br3-imagem.png" class="logo-login">
+            <div style="margin-bottom: 20px; color: #666; font-size: 14px;">Sistema de Conferência</div>
+            <button style="width:100%; padding: 18px;" onclick="show('scr-products')">ENTRAR</button>
+        </div>
+    </div>
+
+    <!-- TELA DE SELEÇÃO DE PRODUTO -->
+    <div id="scr-products" class="screen">
+        <div style="width:100%; max-width:1100px;">
+            <!-- Header estilo Fill -->
+            <div style="background:#fff; border-radius:16px; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; box-shadow:0 2px 10px rgba(0,0,0,0.06);">
+                <img src="https://i.postimg.cc/sfJg4Ykr/br3-imagem.png" style="height:36px;">
+                <div style="display:flex; gap:10px;">
+                    <button onclick="openNewProductModal()" style="background:var(--dark); display:flex; align-items:center; gap:6px; padding:10px 18px; font-size:13px;">
+                        <span style="font-size:16px; font-weight:300;">+</span> Novo Produto
+                    </button>
+                    <button onclick="show('scr-login')" style="background:var(--dark); padding:10px 18px; font-size:13px;">Sair</button>
+                </div>
+            </div>
+
+            <!-- Título -->
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:24px;">
+                <div style="width:4px; height:28px; background:var(--dark); border-radius:2px;"></div>
+                <h2 style="margin:0; font-size:22px; color:var(--dark);">Produtos Disponíveis</h2>
+            </div>
+
+            <!-- Grid de produtos -->
+            <div id="products-grid" style="display:flex; flex-wrap:wrap; gap:20px;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL NOVO PRODUTO -->
+    <div id="modal-new-product" class="modal-overlay" onclick="closeNewProductModal(event)">
+        <div class="modal-box" style="max-width:460px;">
+            <div class="modal-header">
+                <h3>+ Novo Produto</h3>
+                <button class="modal-close" onclick="closeNewProductModal(null,true)">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:12px; font-weight:700; color:#555; display:block; margin-bottom:6px;">NOME DO PRODUTO</label>
+                    <input type="text" id="new-prod-name" placeholder="Ex: STUDIO COMPACTO"
+                        style="width:100%; padding:12px 14px; border:2px solid #ddd; border-radius:10px; font-size:14px; outline:none;">
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label style="font-size:12px; font-weight:700; color:#555; display:block; margin-bottom:6px;">LINK DA IMAGEM</label>
+                    <input type="text" id="new-prod-img" placeholder="https://..."
+                        style="width:100%; padding:12px 14px; border:2px solid #ddd; border-radius:10px; font-size:14px; outline:none;">
+                </div>
+                <button onclick="addNewProduct()" style="width:100%; padding:14px; font-size:14px; background:var(--dark);">ADICIONAR PRODUTO</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scr-start" class="screen">
+        <div class="header-app container">
+            <img src="https://i.postimg.cc/sfJg4Ykr/br3-imagem.png" style="height: 30px;">
+            <button class="btn-back" onclick="show('scr-products')">Voltar</button>
+        </div>
+        <div class="grid-selection">
+            <div class="card-type" onclick="loadList('MODULO')">
+                <span style="font-size:30px">🏗️</span>
+                <h2>MÓDULOS</h2>
+            </div>
+            <div class="card-type" onclick="loadList('POD')">
+                <span style="font-size:30px">🚿</span>
+                <h2>PODS</h2>
+            </div>
+        </div>
+    </div>
+
+    <div id="scr-list" class="screen">
+        <div class="container">
+            <div class="header-app">
+                <h3 id="list-title" style="margin:0;">Unidades</h3>
+                <div style="display: flex; gap: 10px;">
+                    <button style="background:#217346" onclick="doExcelAll()">Excel</button>
+                    <button style="background:#6f42c1" onclick="openSearchModal()">🔍 Pesquisar</button>
+                    <button onclick="show('scr-start')">Voltar</button>
+                </div>
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead><tr><th>ID Projeto</th><th>Cód. Express</th><th>OP</th><th>Status Atual</th><th>Gestão</th></tr></thead>
+                    <tbody id="body-units"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="scr-check" class="screen">
+        <div id="sync-status" class="status-sync">☁️ Sincronizado</div>
+        <div class="container" style="margin-bottom: 250px;">
+            <div id="info-header" style="background: var(--dark); color: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; display: flex; justify-content: space-around; font-size: 11px; text-align: center;"></div>
+            <div id="items-container" class="check-container"></div>
+        </div>
+
+        <div class="action-bar">
+            <div style="width:100%">
+                <div style="display:flex; justify-content:space-between; font-weight:700; font-size:11px;">
+                    <span>PROGRESSO</span><span id="pct-txt">0%</span>
+                </div>
+                <div style="background:#eee; height:8px; border-radius:4px; margin:5px 0; overflow:hidden">
+                    <div id="bar-fill" style="background:var(--primary); height:100%; width:0%; transition:0.6s"></div>
+                </div>
+                <textarea id="obs-main" placeholder="Observações e pendências..." onblur="saveSingleField('obs', this.value)"></textarea>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; width:100%">
+                <button style="background:#217346" onclick="doExcel()">Excel</button>
+                <button onclick="doPDF()">Gerar PDF</button>
+                <button style="grid-column: span 2; background:#333; color:white" onclick="exitCheck()">SALVAR E SAIR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE PESQUISA DE ATIVIDADES -->
+    <div id="modal-search" class="modal-overlay" onclick="closeSearchModal(event)">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>🔍 Pesquisar Atividade</h3>
+                <button class="modal-close" onclick="closeSearchModal(null, true)">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="search-input-wrap">
+                    <span class="ico">🔍</span>
+                    <input type="text" id="search-activity-input"
+                        placeholder="Ex: PREPARAÇÃO IMPERMEABILIZAÇÃO DO PISO"
+                        oninput="onSearchInput(this.value)"
+                        autocomplete="off">
+                </div>
+                <div class="search-hint">Digite o nome da atividade para ver em quais unidades ela foi concluída.</div>
+                <div id="search-suggestions" class="search-suggestions" style="display:none"></div>
+                <div id="search-results-area"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURAÇÃO FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyCuI-JSXWNzLCscFowXYZVRHsSN95Z_LEU",
+            authDomain: "sistema-conferencia-24505.firebaseapp.com",
+            projectId: "sistema-conferencia-24505",
+            databaseURL: "https://sistema-conferencia-24505-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let cur = {};
+        let currentListType = '';
+
+        // BANCO DE DADOS DE UNIDADES
+        const dbM = [
+            ["7.00.SGC0018","EXPRESS 291","006307"], ["7.00.0000015","EXPRESS 292","006306"],
+            ["7.00.SGC0017","EXPRESS 293","006308"], ["7.00.0000014","EXPRESS 294","006309"],
+            ["7.00.SGC0016","EXPRESS 295","006310"], ["7.00.0000015","EXPRESS 296","006311"],
+            ["7.00.SGC0013","EXPRESS 297","006312"], ["7.00.0000014","EXPRESS 298","006313"],
+            ["7.00.0000018","EXPRESS 299","006314"], ["7.00.0000015","EXPRESS 300","006315"],
+            ["7.00.0000017","EXPRESS 301","006316"], ["7.00.0000014","EXPRESS 302","006317"],
+            ["7.00.0000016","EXPRESS 303","006641"], ["7.00.0000015","EXPRESS 304","006319"],
+            ["7.00.0000013","EXPRESS 305","006320"], ["7.00.0000014","EXPRESS 306","006321"],
+            ["7.00.SGC0018","EXPRESS 307","007064"], ["7.00.0000015","EXPRESS 308","007059"],
+            ["7.00.SGC0017","EXPRESS 309","007066"], ["7.00.0000014","EXPRESS 310","007060"],
+            ["7.00.SGC0016","EXPRESS 311","007067"], ["7.00.0000015","EXPRESS 312","007062"],
+            ["7.00.SGC0013","EXPRESS 313","007068"], ["7.00.0000014","EXPRESS 314","007063"],
+            ["7.00.0000018","EXPRESS 315","007294"], ["7.00.0000015","EXPRESS 316","007290"],
+            ["7.00.0000017","EXPRESS 317","007295"], ["7.00.0000014","EXPRESS 318","007291"],
+            ["7.00.0000016","EXPRESS 319","007296"], ["7.00.0000015","EXPRESS 320","007292"],
+            ["7.00.0000013","EXPRESS 321","007297"], ["7.00.0000014","EXPRESS 322","007293"]
+        ];
+
+        const dbP = [
+            ["7.00.SGC0018","EXPRESS 291","006307"], ["7.00.SGC0017","EXPRESS 293","006308"],
+            ["7.00.SGC0016","EXPRESS 295","006310"], ["7.00.SGC0013","EXPRESS 297","006312"],
+            ["7.00.0000018","EXPRESS 299","006314"], ["7.00.0000017","EXPRESS 301","006316"],
+            ["7.00.0000016","EXPRESS 303","006318"], ["7.00.0000013","EXPRESS 305","006320"],
+            ["7.00.SGC0018","EXPRESS 307","007142"], ["7.00.SGC0017","EXPRESS 309","007143"],
+            ["7.00.SGC0016","EXPRESS 311","007144"], ["7.00.SGC0013","EXPRESS 313","007145"],
+            ["7.00.0000018","EXPRESS 315","007323"], ["7.00.0000017","EXPRESS 317","007324"],
+            ["7.00.0000016","EXPRESS 319","007325"], ["7.00.0000013","EXPRESS 321","007326"]
+        ];
+
+        // TASKS MODULOS
+        const tM = [
+            {p:"CORTE DOS PILARES - SL 01", a:"INICIO", d:1}, {p:"CORTE DOS PILARES - SL 01", a:"FIM", d:1}, {p:"CORTE DOS PILARES - SL 01", a:"CONCLUÍDO", c:1},
+            {p:"CORTE DOS MÓDULOS - SL 01", a:"INICIO", d:1}, {p:"CORTE DOS MÓDULOS - SL 01", a:"FIM", d:1}, {p:"CORTE DOS MÓDULOS - SL 01", a:"CONCLUÍDO", c:1},
+            {p:"SL 02", a:"MONT. PILARES", c:1},
+            {p:"SL 03 - A", a:"MONT. PAREDES MENORES (FRENTE)", c:1}, {p:"SL 03 - A", a:"MONT. PAREDES MENORES (ATRÁS)", c:1},
+            {p:"SL 03 - B", a:"MONT. PAREDES MAIORES (ESQ.)", c:1}, {p:"SL 03 - B", a:"MONT. PAREDES MAIORES (DIR.)", c:1},
+            {p:"SL 03 - C", a:"MONT. COBERTURA", c:1}, {p:"SL 03 - C", a:"MONT. PISO", c:1},
+            {p:"SL 05", a:"CORTE PORCELANATO", c:1}, {p:"SL 06", a:"CORTE DE PLACAS", c:1}, {p:"SL 04", a:"EMPLACAMENTO", c:1},
+            {p:"SL 09", a:"FECHAMENTO PISO", c:1}, {p:"SL 09", a:"FECHAMENTO PISO", c:1},
+            {p:"VOLUMETRIZAÇÃO - SL 10", a:"DATA INICIO", d:1}, {p:"VOLUMETRIZAÇÃO - SL 10", a:"DATA FIM", d:1}, {p:"VOLUMETRIZAÇÃO - SL 10", a:"CONCLUÍDO", c:1},
+            {p:"SL 11", a:"CHICOTE ELÉTRICO", c:1}, {p:"SL 12", a:"KIT HIDRÁULICO", c:1}, {p:"SL 14", a:"PINTURA", c:1},
+            {p:"LP 01", a:"INST. ELÉTRICA", c:1, t:'lp'}, {p:"LP 01", a:"INST. HIDRAULICA + CLIMATIZAÇÃO", c:1, t:'lp'}, {p:"LP 01", a:"LÃ DE PET", c:1, t:'lp'},
+            {p:"LP 01", a:"FECHAMENTO DO FORRO", c:1, t:'lp'}, {p:"LP 01", a:"FECHAMENTO 2ª FACE", c:1, t:'lp'}, {p:"LP 01", a:"CORTES NO FORRO", c:1, t:'lp'}, {p:"LP 01", a:"PREPARAÇÃO IMPERMEABILIZAÇÃO DO PISO", c:1, t:'lp'},
+            {p:"LP 02", a:"APLICAÇÃO D11", c:1, t:'lp'}, {p:"LP 02", a:"APLICAÇÃO DF-9", c:1, t:'lp'},
+            {p:"LP 03", a:"TRATAMENTO DE JUNTAS 1ª DEMÃO", c:1, t:'lp'}, {p:"LP 03", a:"TRATAMENTO DE JUNTAS 2ª DEMÃO", c:1, t:'lp'}, {p:"LP 03", a:"INST. SOLEIRA", c:1, t:'lp'},
+            {p:"LP 04", a:"INST. REQUADROS", c:1, t:'lp'}, {p:"LP 04", a:"TRATAMENTO DE JUNTAS 3ª DEMÃO", c:1, t:'lp'}, {p:"LP 04", a:"ASSENTAMENTO DO PISO", c:1, t:'lp'},
+            {p:"LP 05", a:"ASSENTAMENTO DO PISO", c:1, t:'lp'}, {p:"LP 05", a:"REVISTIMENTO DE PAREDE", c:1, t:'lp'},
+            {p:"LP 06", a:"REVISTIMENTO DE PAREDE", c:1, t:'lp'}, {p:"LP 06", a:"LIXAR TRATAMENTO + FUNDO PREPARADOR", c:1, t:'lp'}, {p:"LP 06", a:"APLICAÇÃO DE FUNDO BRANCO", c:1, t:'lp'},
+            {p:"LP 07", a:"FECHAMENTO PAREDE EXTERNA (TYVEKK + SIDING)", c:1, t:'lp'}, {p:"LP 07", a:"INST. FORRO PVC", c:1, t:'lp'}, {p:"LP 07", a:"PINTURA 1ª DEMÃO + CATADOS", c:1, t:'lp'}, {p:"LP 07", a:"REJUNTE", c:1, t:'lp'}, {p:"LP 07", a:"LIXAR CATADOS + PINTURA 2ª DEMÃO", c:1, t:'lp'},
+            {p:"LP 08", a:"FECHAMENTO PAREDE EXTERNA (TYVEKK + SIDING)", c:1, t:'lp'}, {p:"LP 08", a:"LIMPEZA DO REJUNTE", c:1, t:'lp'}, {p:"LP 08", a:"INST. ESQUADRIAS DE ALUMÍNIO", c:1, t:'lp'},
+            {p:"LP 09", a:"APLICAÇÃO DE PRIMER PAREDES EXTERNAS", c:1, t:'lp'}, {p:"LP 09", a:"PINTURA 1ª DEMÃO PAREDES EXTERNAS", c:1, t:'lp'}, {p:"LP 09", a:"PINTURA 2ª DEMÃO DAS PAREDES EXTERNAS", c:1, t:'lp'}, {p:"LP 09", a:"INSTALAÇÃO DOS ACABAMENTOS ELÉTRICOS", c:1, t:'lp'}, {p:"LP 09", a:"CATADOS COM MASSA CORRIDA", c:1, t:'lp'}, {p:"LP 09", a:"INSTALAÇÃO DAS PORTAS DE MADEIRA", c:1, t:'lp'},
+            {p:"LP 10", a:"VEDAÇÃO DAS PAREDES EXTERNAS", c:1, t:'lp'}, {p:"LP 10", a:"INSTALAÇÃO DAS VISTAS + RODAPÉS", c:1, t:'lp'}, {p:"LP 10", a:"ISOLAMENTO + LIXAR CATADOS + PINTURA 3ª DEMÃO", c:1, t:'lp'}, {p:"LP 10", a:"ACABAMENTOS EM SILICONE", c:1, t:'lp'},
+            {p:"LP 10", a:"FINALIZAÇÃO (DATA)", d:1, t:'lp'}, {p:"LP 10", a:"DATA CARREGAMENTO", d:1, t:'lp'}
+        ];
+
+        // TASKS PODS
+        const tP = [
+            {p:"CORTESL 01", a:"DATA INÍCIO", d:1}, {p:"CORTESL 01", a:"DATA FIM", d:1}, {p:"CORTESL 01", a:"CONCLUÍDO", c:1},
+            {p:"SL 02", a:"MONTAGEM DOS QUADROS DE METALON", c:1}, {p:"SL 03", a:"EMPLACAMENTO DOS QUADROS DE METALON", c:1}, {p:"SL 05", a:"CORTE DE PLACAS", c:1},
+            {p:"VOL-SL 07", a:"DATA INÍCIO", d:1}, {p:"VOL-SL 07", a:"DATA FIM", d:1}, {p:"VOL-SL 07", a:"CONCLUÍDO", c:1},
+            {p:"SL 08-DIA 1", a:"INST. ELÉTRICA", c:1}, {p:"SL 08-DIA 1", a:"INST. HIDRÁULICA + TESTE DE ESTANQUEIDADE", c:1}, {p:"SL 08-DIA 1", a:"PREPARAÇÃO DA SUPERFICIE", c:1},
+            {p:"SL 08 - DIA 2", a:"APLICAÇÃO D11", c:1}, {p:"SL 08-DIA 2", a:"APLICAÇÃO DF-9", c:1}, {p:"SL 08-DIA 2", a:"LÃ DE PET", c:1},
+            {p:"SL 08-DIA 3", a:"CERÂMICA PISO", c:1}, {p:"SL 08-DIA 3", a:"CERÂMICA PAREDE", c:1}, {p:"SL 08-DIA 4", a:"CERÂMICA PAREDE", c:1},
+            {p:"SL 08-DIA 5", a:"INSTALAÇÃO DO FORRO PVC", c:1}, {p:"SL 08-DIA 5", a:"REJUNTE", c:1}, {p:"SL 08-DIA 6", a:"LIMPEZA REJUNTE", c:1},
+            {p:"SL 08-DIA 6", a:"INST. ACABAMENTO ELÉTRICO", c:1}, {p:"SL 08 - DIA 6", a:"INST. LOUÇAS E METAIS", c:1}, {p:"SL 08 - DIA 6", a:"INST. PORTA DE MADEIRA", c:1},
+            {p:"SL 08-DIA 7", a:"INST. PORTINHOLA", c:1}, {p:"SL 08-DIA 7", a:"INST. VISTAS INTERNAS", c:1}, {p:"SL 08 - DIA 7", a:"INST. NICHO", c:1}, {p:"SL 08-DIA 7", a:"ACABAMENTO EM SILICONE", c:1}
+        ];
+
+        // FUNÇÃO NAVEGAÇÃO
+        function show(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            window.scrollTo(0,0);
+            if(id === 'scr-products') renderProducts();
+        }
+
+        // ========== GESTÃO DE PRODUTOS ==========
+        let products = JSON.parse(localStorage.getItem('sgc_products') || 'null') || [
+            { name: "EXPRESS", img: "https://i.postimg.cc/5ND8bbnz/image-removebg-preview-(2).png" }
+        ];
+
+        function saveProducts() {
+            localStorage.setItem('sgc_products', JSON.stringify(products));
+        }
+
+        function renderProducts() {
+            const grid = document.getElementById('products-grid');
+            grid.innerHTML = products.map((p, i) => `
+                <div onclick="show('scr-start')" style="
+                    background:#fff; border-radius:20px; width:220px; padding:30px 20px 20px;
+                    cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.07);
+                    border:2px solid transparent; transition:0.2s; text-align:center;
+                    display:flex; flex-direction:column; align-items:center; gap:16px;
+                " onmouseover="this.style.borderColor='var(--primary)'; this.style.transform='translateY(-3px)'"
+                   onmouseout="this.style.borderColor='transparent'; this.style.transform='none'">
+                    <img src="${p.img}" style="height:120px; object-fit:contain;">
+                    <div style="font-weight:800; font-size:13px; color:var(--dark); letter-spacing:0.5px; line-height:1.4;">${p.name}</div>
+                </div>
+            `).join('');
+        }
+
+        function openNewProductModal() {
+            document.getElementById('modal-new-product').classList.add('open');
+            document.getElementById('new-prod-name').value = '';
+            document.getElementById('new-prod-img').value = '';
+            setTimeout(() => document.getElementById('new-prod-name').focus(), 100);
+        }
+
+        function closeNewProductModal(e, force) {
+            if(force || (e && e.target === document.getElementById('modal-new-product'))) {
+                document.getElementById('modal-new-product').classList.remove('open');
+            }
+        }
+
+        function addNewProduct() {
+            const name = document.getElementById('new-prod-name').value.trim().toUpperCase();
+            const img  = document.getElementById('new-prod-img').value.trim();
+            if(!name) { alert('Informe o nome do produto.'); return; }
+            if(!img)  { alert('Informe o link da imagem.'); return; }
+            products.push({ name, img });
+            saveProducts();
+            closeNewProductModal(null, true);
+            renderProducts();
+        }
+
+        // CARREGAR LISTA DE UNIDADES
+        async function loadList(type) {
+            currentListType = type;
+            const body = document.getElementById('body-units');
+            body.innerHTML = "<tr><td colspan='5' style='text-align:center'>Sincronizando dados...</td></tr>";
+            const data = (type === 'MODULO') ? dbM : dbP;
+            const tasks = (type === 'MODULO') ? tM : tP;
+            document.getElementById('list-title').innerText = type === 'MODULO' ? "Módulos de Produção" : "Pods Hidrossanitários";
+            
+            const snapshot = await db.ref('conferencias').once('value');
+            const allSaved = snapshot.val() || {};
+            
+            body.innerHTML = "";
+            data.forEach(u => {
+                const path = type + "_" + u[1].replace(/\./g, '_');
+                const saved = allSaved[path] || JSON.parse(localStorage.getItem(path)) || {};
+                
+                let done = 0, total = 0, lastTask = "A iniciar";
+                tasks.forEach((t, i) => {
+                    if(t.c) {
+                        total++;
+                        if(saved['c_'+i]) {
+                            done++;
+                            lastTask = `<b>${t.p}</b> ${t.a}`;
+                        }
+                    }
+                });
+                const p = Math.round((done/total)*100) || 0;
+
+                let dotClass = 'dot-red';
+                const loadDateKey = type === 'MODULO' ? 'd_63' : 'd_999'; 
+                
+                if (saved[loadDateKey]) {
+                    dotClass = 'dot-green';
+                } else if (p === 100) {
+                    dotClass = 'dot-yellow';
+                }
+
+                body.innerHTML += `<tr>
+                    <td><span class="status-dot ${dotClass}"></span><b>${u[0]}</b></td>
+                    <td>${u[1]}</td>
+                    <td>${u[2]}</td>
+                    <td class="status-cell"><span class="pct-badge">${p}%</span><br><small>${lastTask}</small></td>
+                    <td><button onclick="openCheck('${u[0]}','${u[1]}','${u[2]}','${type}')">Conferir</button></td>
+                </tr>`;
+            });
+            show('scr-list');
+        }
+
+        async function openCheck(id, exp, op, type) {
+            cur = { id, exp, op, type, path: type + "_" + exp.replace(/\./g, '_') };
+            document.getElementById('info-header').innerHTML = `<div>PROJETO<br><b>${id}</b></div><div>EXPRESS<br><b>${exp}</b></div><div>OP<br><b>${op}</b></div>`;
+            
+            db.ref('conferencias/' + cur.path).off();
+            db.ref('conferencias/' + cur.path).on('value', (snapshot) => {
+                const saved = snapshot.val() || {};
+                updateUIFields(saved);
+            });
+
+            const cont = document.getElementById('items-container');
+            cont.innerHTML = "";
+            const tasks = (type === 'MODULO') ? tM : tP;
+
+            tasks.forEach((t, i) => {
+                cont.innerHTML += `<div class="check-row">
+                    <div class="c-posto ${t.t?'lp-style':''}">${t.p}</div>
+                    <div class="c-ativid">${t.a}</div>
+                    <div class="c-input">${t.d ? `<input type="date" class="d-in" id="d_${i}" data-idx="${i}" onchange="saveSingleField('d_'+${i}, this.value)">` : ''}</div>
+                    <div class="c-input">${t.c ? `<input type="checkbox" class="c-in" id="c_${i}" data-idx="${i}" onclick="saveSingleField('c_'+${i}, this.checked)">` : ''}</div>
+                </div>`;
+            });
+            show('scr-check');
+        }
+
+        function updateUIFields(saved) {
+            if(saved.obs !== undefined) document.getElementById('obs-main').value = saved.obs;
+            document.querySelectorAll('.d-in').forEach(el => {
+                if(saved['d_'+el.dataset.idx] !== undefined) el.value = saved['d_'+el.dataset.idx];
+            });
+            document.querySelectorAll('.c-in').forEach(el => {
+                if(saved['c_'+el.dataset.idx] !== undefined) el.checked = saved['c_'+el.dataset.idx];
+            });
+            updateUI();
+        }
+
+        function saveSingleField(fieldKey, value) {
+            if(!cur.path) return;
+            setSyncStatus(false);
+            
+            let update = {};
+            update[fieldKey] = value;
+            update['lastUpdate'] = Date.now();
+
+            const local = JSON.parse(localStorage.getItem(cur.path)) || {};
+            local[fieldKey] = value;
+            localStorage.setItem(cur.path, JSON.stringify(local));
+
+            db.ref('conferencias/' + cur.path).update(update).then(() => {
+                setSyncStatus(true);
+            });
+            updateUI();
+        }
+
+        function setSyncStatus(isSynced) {
+            const el = document.getElementById('sync-status');
+            if(isSynced) {
+                el.innerText = "☁️ Sincronizado";
+                el.className = "status-sync";
+            } else {
+                el.innerText = "⏳ Salvando...";
+                el.className = "status-saving";
+            }
+        }
+
+        function updateUI() {
+            const t = document.querySelectorAll('.c-in').length;
+            const d = document.querySelectorAll('.c-in:checked').length;
+            const p = Math.round((d/t)*100) || 0;
+            const bar = document.getElementById('bar-fill');
+            if(bar) bar.style.width = p + "%";
+            const txt = document.getElementById('pct-txt');
+            if(txt) txt.innerText = p + "%";
+        }
+
+        function exitCheck() {
+            if(cur.path) db.ref('conferencias/' + cur.path).off();
+            loadList(cur.type);
+        }
+
+        function doPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFillColor(26, 28, 30);
+            doc.rect(0, 0, 210, 25, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text("BRASIL AO CUBO - SGC", 14, 16);
+            doc.setTextColor(40, 40, 40);
+            doc.setFontSize(10);
+            doc.text(`Unidade: ${cur.exp} | OP: ${cur.op} | Projeto: ${cur.id}`, 14, 35);
+
+            const rows = [];
+            document.querySelectorAll('.check-row').forEach(r => {
+                const ck = r.querySelector('.c-in');
+                rows.push([
+                    r.querySelector('.c-posto').innerText, 
+                    r.querySelector('.c-ativid').innerText, 
+                    r.querySelector('.d-in')?.value || "", 
+                    ck ? (ck.checked ? "OK" : "") : ""
+                ]);
+            });
+
+            doc.autoTable({ 
+                startY: 45,
+                head: [['Posto', 'Atividade', 'Data', 'Status']], 
+                body: rows,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [240, 240, 240], textColor: 20 }
+            });
+
+            const finalY = doc.lastAutoTable.finalY || 50;
+            const obs = document.getElementById('obs-main').value || "Nenhuma pendência.";
+            doc.setFont(undefined, 'bold');
+            doc.text("OBSERVAÇÕES:", 14, finalY + 12);
+            doc.setFont(undefined, 'normal');
+            doc.text(doc.splitTextToSize(obs, 180), 14, finalY + 18);
+            doc.save(`SGC_${cur.exp}.pdf`);
+        }
+
+        function doExcel() {
+            let rowData = [cur.id, cur.exp, cur.op];
+            document.querySelectorAll('.check-row').forEach(r => {
+                const dateInput = r.querySelector('.c-input input[type="date"]');
+                const checkInput = r.querySelector('.c-input input[type="checkbox"]');
+                if (dateInput) {
+                    let val = dateInput.value;
+                    if(val) {
+                        const [y, m, d] = val.split('-');
+                        rowData.push(`${d}/${m}/${y}`);
+                    } else { rowData.push(""); }
+                }
+                if (checkInput) { 
+                    rowData.push(checkInput.checked ? "=VERDADEIRO" : "=FALSO"); 
+                }
+            });
+            const ws = XLSX.utils.aoa_to_sheet([rowData]);
+            const wb = XLSX.utils.book_new(); 
+            XLSX.utils.book_append_sheet(wb, ws, "SGC_Export");
+            XLSX.writeFile(wb, `SGC_${cur.exp}_Dados.xlsx`);
+        }
+
+        // ========== PESQUISA DE ATIVIDADES ==========
+
+        // Monta lista única de todas as atividades (tM + tP) para autocomplete
+        function getAllActivities() {
+            const set = new Set();
+            [...tM, ...tP].forEach(t => { if(t.c) set.add(t.a.trim().toUpperCase()); });
+            return [...set].sort();
+        }
+
+        function openSearchModal() {
+            document.getElementById('modal-search').classList.add('open');
+            document.getElementById('search-activity-input').value = '';
+            document.getElementById('search-suggestions').style.display = 'none';
+            document.getElementById('search-suggestions').innerHTML = '';
+            document.getElementById('search-results-area').innerHTML = '';
+            setTimeout(() => document.getElementById('search-activity-input').focus(), 100);
+        }
+
+        function closeSearchModal(e, force) {
+            if(force || (e && e.target === document.getElementById('modal-search'))) {
+                document.getElementById('modal-search').classList.remove('open');
+            }
+        }
+
+        function onSearchInput(val) {
+            const query = val.trim().toUpperCase();
+            const sugBox = document.getElementById('search-suggestions');
+            const resultsArea = document.getElementById('search-results-area');
+
+            if(query.length < 2) {
+                sugBox.style.display = 'none';
+                sugBox.innerHTML = '';
+                resultsArea.innerHTML = '';
+                return;
+            }
+
+            const activities = getAllActivities();
+            const matches = activities.filter(a => a.includes(query));
+
+            if(matches.length === 0) {
+                sugBox.style.display = 'none';
+                sugBox.innerHTML = '';
+                resultsArea.innerHTML = '<div class="search-empty">Nenhuma atividade encontrada com esse nome.</div>';
+                return;
+            }
+
+            sugBox.style.display = 'block';
+            sugBox.innerHTML = matches.slice(0, 10).map(m => {
+                const highlighted = m.replace(new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), `<mark>$&</mark>`);
+                return `<div class="suggestion-item" onclick="selectActivity('${m.replace(/'/g,"\\'")}')">
+                    ${highlighted}
+                </div>`;
+            }).join('');
+        }
+
+        async function selectActivity(activityName) {
+            const sugBox = document.getElementById('search-suggestions');
+            const resultsArea = document.getElementById('search-results-area');
+            const input = document.getElementById('search-activity-input');
+
+            input.value = activityName;
+            sugBox.style.display = 'none';
+            sugBox.innerHTML = '';
+
+            resultsArea.innerHTML = '<div class="search-loading">⏳ Buscando dados no Firebase...</div>';
+
+            // Busca os índices dessa atividade em módulos e pods
+            const mIndices = tM.reduce((acc, t, i) => { if(t.c && t.a.trim().toUpperCase() === activityName) acc.push(i); return acc; }, []);
+            const pIndices = tP.reduce((acc, t, i) => { if(t.c && t.a.trim().toUpperCase() === activityName) acc.push(i); return acc; }, []);
+
+            // Carrega todos os dados do Firebase
+            const snapshot = await db.ref('conferencias').once('value');
+            const allSaved = snapshot.val() || {};
+
+            let items = [];
+
+            // Verifica em MÓDULOS
+            if(mIndices.length > 0) {
+                dbM.forEach(u => {
+                    const path = 'MODULO_' + u[1].replace(/\./g, '_');
+                    const saved = allSaved[path] || JSON.parse(localStorage.getItem(path)) || {};
+                    const done = mIndices.some(i => saved['c_'+i] === true);
+                    items.push({ express: u[1], op: u[2], proj: u[0], type: 'MODULO', done });
+                });
+            }
+
+            // Verifica em PODS
+            if(pIndices.length > 0) {
+                dbP.forEach(u => {
+                    const path = 'POD_' + u[1].replace(/\./g, '_');
+                    const saved = allSaved[path] || JSON.parse(localStorage.getItem(path)) || {};
+                    const done = pIndices.some(i => saved['c_'+i] === true);
+                    items.push({ express: u[1], op: u[2], proj: u[0], type: 'POD', done });
+                });
+            }
+
+            if(items.length === 0) {
+                resultsArea.innerHTML = '<div class="search-empty">Esta atividade não existe nos dados cadastrados.</div>';
+                return;
+            }
+
+            const countDone = items.filter(x => x.done).length;
+            const countPend = items.length - countDone;
+
+            // Ordena: feitos primeiro, depois pendentes
+            items.sort((a, b) => (b.done ? 1 : 0) - (a.done ? 1 : 0));
+
+            const listHTML = items.map(item => `
+                <div class="search-result-item">
+                    <div class="result-dot ${item.done ? 'green' : 'red'}"></div>
+                    <div class="result-info">
+                        <div class="result-express">${item.express}</div>
+                        <div class="result-op">Proj: ${item.proj} &nbsp;|&nbsp; OP: ${item.op}</div>
+                    </div>
+                    <span class="result-type-badge ${item.type === 'MODULO' ? 'badge-modulo' : 'badge-pod'}">
+                        ${item.type === 'MODULO' ? '🏗️ Módulo' : '🚿 Pod'}
+                    </span>
+                </div>
+            `).join('');
+
+            resultsArea.innerHTML = `
+                <div class="search-results-title">Resultado para: "${activityName}"</div>
+                <div class="search-stats">
+                    <span>Total: <b>${items.length}</b></span>
+                    <span class="stat-green">● Concluído: ${countDone}</span>
+                    <span class="stat-red">● Pendente: ${countPend}</span>
+                </div>
+                <div class="search-results-list">${listHTML}</div>
+            `;
+        }
+
+        async function doExcelAll() {
+            const type = currentListType;
+            const data = (type === 'MODULO') ? dbM : dbP;
+            const tasks = (type === 'MODULO') ? tM : tP;
+            
+            const snapshot = await db.ref('conferencias').once('value');
+            const allSaved = snapshot.val() || {};
+            
+            let fullMatrix = [];
+
+            data.forEach(u => {
+                let rowData = [u[0], u[1], u[2]];
+                const path = type + "_" + u[1].replace(/\./g, '_');
+                const saved = allSaved[path] || JSON.parse(localStorage.getItem(path)) || {};
+
+                tasks.forEach((t, i) => {
+                    if (t.d) {
+                        let val = saved['d_'+i];
+                        if(val) {
+                            const [y, m, d] = val.split('-');
+                            rowData.push(`${d}/${m}/${y}`);
+                        } else { rowData.push(""); }
+                    }
+                    if (t.c) {
+                        rowData.push(saved['c_'+i] ? "=VERDADEIRO" : "=FALSO");
+                    }
+                });
+                fullMatrix.push(rowData);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(fullMatrix);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "SGC_Geral");
+            XLSX.writeFile(wb, `SGC_Geral_${type}.xlsx`);
+        }
+    </script>
+</body>
+</html>
